@@ -43,16 +43,23 @@ class AlsaDeviceManager(pykka.ThreadingActor, device.DeviceManager):
         return ALSA_DEVICE_TYPE + ':audio:' + address
 
     def on_start(self):
+        logger.info('AlsaDeviceManager started')
         cards = alsaaudio.cards()
-        addr = 0
+        idx = 0
         for i in cards:
             connected = self.config['alsa']['autoconnect']
-            addr_str = 'hw:' + str(addr)
-            self._devices[addr_str] = {'name':i, 'addr':addr_str, 'connected': connected}
+            mixers = alsaaudio.mixers(idx)
+            mixer = alsaaudio.Mixer(control=mixers[0], cardindex=idx)
+            addr_str = mixer.cardname()
+            self._devices[addr_str] = {'name':i, 'addr':addr_str,
+                                       'connected': False, 'idx': idx,
+                                       'mixers':mixers}
+            dev = AlsaDeviceManager._make_device(self._devices[addr_str])
             device.DeviceListener.send('device_found',
-                                       device=AlsaDeviceManager._make_device(self._devices[addr_str]))
-            addr += 1
-        logger.info('AlsaDeviceManager started')
+                                       device=dev)
+            if (connected):
+                self.connect(dev)
+            idx += 1
 
     def on_stop(self):
         for d in self._devices.keys():
