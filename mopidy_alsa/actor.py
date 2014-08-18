@@ -4,12 +4,12 @@ import logging
 import pykka
 import alsaaudio
 
-from mopidy import device, exceptions, models
+from mopidy import device, models
 from sink import AlsaAudioSink
 
 logger = logging.getLogger(__name__)
 
-ALSA_DEVICE_TYPE = 'alsa'
+ALSA_SERVICE_NAME = 'alsa'
 
 
 class AlsaDeviceManager(pykka.ThreadingActor, device.DeviceManager):
@@ -27,7 +27,7 @@ class AlsaDeviceManager(pykka.ThreadingActor, device.DeviceManager):
     """
     def __init__(self, config, audio):
         super(AlsaDeviceManager, self).__init__()
-        self.device_types = [ALSA_DEVICE_TYPE]
+        self.name = ALSA_SERVICE_NAME
         self.config = config
         self.audio = audio
         self._devices = {}
@@ -36,11 +36,11 @@ class AlsaDeviceManager(pykka.ThreadingActor, device.DeviceManager):
     def _make_device(dev):
         caps = [device.DeviceCapability.DEVICE_AUDIO_SINK]
         return models.Device(name=dev['name'], address=dev['addr'], capabilities=caps,
-                             device_type=ALSA_DEVICE_TYPE)
+                             device_type=ALSA_SERVICE_NAME)
 
     @staticmethod
     def _audio_sink_name(address):
-        return ALSA_DEVICE_TYPE + ':audio:' + address
+        return ALSA_SERVICE_NAME + ':audio:' + address
 
     def on_start(self):
         logger.info('AlsaDeviceManager started')
@@ -71,12 +71,6 @@ class AlsaDeviceManager(pykka.ThreadingActor, device.DeviceManager):
     def get_devices(self):
         return map(AlsaDeviceManager._make_device, self._devices.values())
 
-    def enable(self):
-        pass
-
-    def disable(self):
-        pass
-
     def connect(self, dev):
         self._devices[dev.address]['connected'] = True
         ident = AlsaDeviceManager._audio_sink_name(dev.address)
@@ -88,24 +82,3 @@ class AlsaDeviceManager(pykka.ThreadingActor, device.DeviceManager):
         ident = AlsaDeviceManager._audio_sink_name(dev.address)
         self.audio.remove_sink(ident)
         device.DeviceListener.send('device_disconnected', device=dev)
-
-    def pair(self, dev):
-        raise exceptions.ExtensionError('Pairing not supported')
-
-    def remove(self, dev):
-        raise exceptions.ExtensionError('Pairing not supported')
-
-    def is_connected(self, dev):
-        return self._devices[dev.address]['connected']
-
-    def is_paired(self, dev):
-        raise exceptions.ExtensionError('Pairing not supported')
-
-    def set_property(self, dev, name, value):
-        raise exceptions.ExtensionError('Properties not supported')
-
-    def get_property(self, dev, name=None):
-        raise exceptions.ExtensionError('Properties not supported')
-
-    def has_property(self, dev, name):
-        raise exceptions.ExtensionError('Properties not supported')
