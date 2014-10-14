@@ -28,6 +28,7 @@ class AlsaDeviceManager(pykka.ThreadingActor, service.Service):
     def __init__(self, config, core):
         super(AlsaDeviceManager, self).__init__()
         self.name = ALSA_SERVICE_NAME
+        self.public = True
         self.config = config
         self.core = core
         self._devices = {}
@@ -80,12 +81,12 @@ class AlsaDeviceManager(pykka.ThreadingActor, service.Service):
         self._devices[dev['addr']]['connected'] = True
         ident = AlsaDeviceManager._audio_sink_name(dev['addr'])
         self.core.add_audio_sink(ident, AlsaAudioSink(dev['addr']))
-        service.ServiceListener.send('alsa_device_connected', service=ALSA_SERVICE_NAME,
+        service.ServiceListener.send('alsa_device_connected', service=self.name,
                                      device=dev)
 
     def disconnect(self, dev):
         self._devices[dev['addr']]['connected'] = False
         ident = AlsaDeviceManager._audio_sink_name(dev['addr'])
         self.core.remove_audio_sink(ident)
-        service.ServiceListener.send('alsa_device_disconnected', service=ALSA_SERVICE_NAME,
+        service.ServiceListener.send('alsa_device_disconnected', service=self.name,
                                      device=dev)
