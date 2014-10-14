@@ -4,7 +4,7 @@ import logging
 import pykka
 import alsaaudio
 
-from mopidy import device, models
+from mopidy import service
 from sink import AlsaAudioSink
 
 logger = logging.getLogger(__name__)
@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 ALSA_SERVICE_NAME = 'alsa'
 
 
-class AlsaDeviceManager(pykka.ThreadingActor, device.DeviceManager):
+class AlsaDeviceManager(pykka.ThreadingActor, service.Service):
     """
     AlsaDeviceManager implements an autonomous ALSA audio device manager that
     is capable of discovering and enumerating ALSA audio devices.
@@ -25,25 +25,22 @@ class AlsaDeviceManager(pykka.ThreadingActor, device.DeviceManager):
     parts of Mopidy to determine whether the audio device should be used
     for playback or not.
     """
-    def __init__(self, config, audio):
+    def __init__(self, config, core):
         super(AlsaDeviceManager, self).__init__()
         self.name = ALSA_SERVICE_NAME
         self.config = config
-        self.audio = audio
+        self.core = core
         self._devices = {}
 
     @staticmethod
     def _make_device(dev):
-        caps = [device.DeviceCapability.DEVICE_AUDIO_SINK]
-        return models.Device(name=dev['name'], address=dev['addr'], capabilities=caps,
-                             device_type=ALSA_SERVICE_NAME)
+        return { 'card': dev['name'], 'addr': dev['addr'] }
 
     @staticmethod
     def _audio_sink_name(address):
         return ALSA_SERVICE_NAME + ':audio:' + address
 
     def on_start(self):
-        logger.info('AlsaDeviceManager started')
         cards = alsaaudio.cards()
         idx = 0
         for i in cards:
@@ -55,30 +52,40 @@ class AlsaDeviceManager(pykka.ThreadingActor, device.DeviceManager):
                                        'connected': False, 'idx': idx,
                                        'mixers':mixers}
             dev = AlsaDeviceManager._make_device(self._devices[addr_str])
-            device.DeviceListener.send('device_found',
-                                       device=dev)
+            service.ServiceListener.send('alsa_device_found', service=ALSA_SERVICE_NAME,
+                                         device=dev)
             if (connected):
                 self.connect(dev)
             idx += 1
+        # Notify listeners
+        self.state = service.ServiceState.SERVICE_STATE_STARTED
+        service.ServiceListener.send('service_started', service=self.name)
+        logger.info('AlsaDeviceManager started')
 
     def on_stop(self):
         for d in self._devices.keys():
             dev = self._devices.pop(d)
-            device.DeviceListener.send('device_disappeared',
-                                       device=AlsaDeviceManager._make_device(dev))
+            service.ServiceListener.send('alsa_device_disappeared',
+                                         service=ALSA_SERVICE_NAME,
+                                         device=AlsaDeviceManager._make_device(dev))
+        # Notify listeners
+        self.state = service.ServiceState.SERVICE_STATE_STOPPED
+        service.ServiceListener.send('service_stopped', service=self.name)
         logger.info('AlsaDeviceManager stopped')
 
     def get_devices(self):
         return map(AlsaDeviceManager._make_device, self._devices.values())
 
     def connect(self, dev):
-        self._devices[dev.address]['connected'] = True
-        ident = AlsaDeviceManager._audio_sink_name(dev.address)
-        self.audio.add_sink(ident, AlsaAudioSink(dev.address))
-        device.DeviceListener.send('device_connected', device=dev)
+        self._devices[dev['addr']]['connected'] = True
+        ident = AlsaDeviceManager._audio_sink_name(dev['addr'])
+        self.core.add_audio_sink(ident, AlsaAudioSink(dev['addr']))
+        service.ServiceListener.send('alsa_device_connected', service=ALSA_SERVICE_NAME,
+                                     device=dev)
 
     def disconnect(self, dev):
-        self._devices[dev.address]['connected'] = False
-        ident = AlsaDeviceManager._audio_sink_name(dev.address)
-        self.audio.remove_sink(ident)
-        device.DeviceListener.send('device_disconnected', device=dev)
+        self._devices[dev['addr']]['connected'] = False
+        ident = AlsaDeviceManager._audio_sink_name(dev['addr'])
+        self.core.remove_audio_sink(ident)
+        service.ServiceListener.send('alsa_device_disconnected', service=ALSA_SERVICE_NAME,
+                                     device=dev)

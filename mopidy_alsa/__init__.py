@@ -30,4 +30,4 @@ class Extension(ext.Extension):
 
     def setup(self, registry):
         from .actor import AlsaDeviceManager
-        registry.add('service', AlsaDeviceManager)
+        registry.add('frontend', AlsaDeviceManager)
